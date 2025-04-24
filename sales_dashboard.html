@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Interactive Sales Performance Dashboard</title>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    body {
+      background: lavender;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 20px;
+      margin: 0;
+    }
+    .container {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 20px;
+    }
+    .chart-box, .summary-box {
+      width: 80%;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 20px;
+      box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+    }
+    input[type="file"] {
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>📊 Interactive Sales Performance Dashboard</h1>
+  <input type="file" id="fileInput" accept=".xlsx, .xls">
+
+  <div class="container">
+    <div id="salesOverTime" class="chart-box"></div>
+    <div id="categoryWiseSales" class="chart-box"></div>
+    <div id="stateWiseSales" class="chart-box"></div>
+    <div id="topCustomers" class="chart-box"></div>
+    <div id="mostSoldProducts" class="chart-box"></div>
+    <div id="summary" class="summary-box"></div>
+    <div id="avgSales" class="summary-box"></div>
+    <div id="highestState" class="summary-box"></div>
+    <div id="shippingMode" class="summary-box"></div>
+    <div id="categoryDistribution" class="chart-box"></div>
+  </div>
+
+  <script>
+    document.getElementById('fileInput').addEventListener('change', handleFile);
+
+    function handleFile(event) {
+      const file = event.target.files[0];
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(sheet);
+        renderDashboard(jsonData);
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function renderDashboard(data) {
+      const salesOverTime = {};
+      const categorySales = {};
+      const stateSales = {};
+      const customerSales = {};
+      const productQuantity = {};
+      const shippingModeCount = {};
+      const categoryCount = {};
+
+      let totalSales = 0;
+
+      data.forEach(row => {
+        const orderDate = new Date(row['Order Date']);
+        const month = orderDate.getFullYear() + '-' + String(orderDate.getMonth() + 1).padStart(2, '0');
+        const customer = row['Customer Name'];
+        const category = row['Category'];
+        const product = row['Product Name'];
+        const state = row['State'];
+        const quantity = +row['Quantity'];
+        const sales = +row['Total Sales (?)'];
+        const shipMode = row['Ship Mode'];
+
+        totalSales += sales;
+
+        salesOverTime[month] = (salesOverTime[month] || 0) + sales;
+        categorySales[category] = (categorySales[category] || 0) + sales;
+        stateSales[state] = (stateSales[state] || 0) + sales;
+        customerSales[customer] = (customerSales[customer] || 0) + sales;
+        productQuantity[product] = (productQuantity[product] || 0) + quantity;
+        shippingModeCount[shipMode] = (shippingModeCount[shipMode] || 0) + 1;
+        categoryCount[category] = (categoryCount[category] || 0) + 1;
+      });
+
+      // Sales Over Time
+      Plotly.newPlot('salesOverTime', [{
+        x: Object.keys(salesOverTime),
+        y: Object.values(salesOverTime),
+        type: 'scatter',
+        mode: 'lines+markers',
+        line: { shape: 'spline' }
+      }], { title: 'Sales Over Time' });
+
+      // Category-wise Sales
+      Plotly.newPlot('categoryWiseSales', [{
+        labels: Object.keys(categorySales),
+        values: Object.values(categorySales),
+        type: 'pie'
+      }], { title: 'Category-wise Sales' });
+
+      // State-wise Sales
+      Plotly.newPlot('stateWiseSales', [{
+        x: Object.keys(stateSales),
+        y: Object.values(stateSales),
+        type: 'bar'
+      }], { title: 'State-wise Sales' });
+
+      // Top Customers
+      const sortedCustomers = Object.entries(customerSales).sort((a, b) => b[1] - a[1]).slice(0, 5);
+      Plotly.newPlot('topCustomers', [{
+        x: sortedCustomers.map(d => d[0]),
+        y: sortedCustomers.map(d => d[1]),
+        type: 'bar'
+      }], { title: 'Top Customers' });
+
+      // Most Sold Products
+      const sortedProducts = Object.entries(productQuantity).sort((a, b) => b[1] - a[1]).slice(0, 5);
+      Plotly.newPlot('mostSoldProducts', [{
+        x: sortedProducts.map(d => d[1]),
+        y: sortedProducts.map(d => d[0]),
+        type: 'bar',
+        orientation: 'h'
+      }], { title: 'Most Sold Products' });
+
+      // Summary Boxes
+      document.getElementById('summary').innerHTML = `<h3>Total Sales: ₹${totalSales.toLocaleString()}</h3>`;
+
+      const avg = totalSales / data.length;
+      document.getElementById('avgSales').innerHTML = `<h3>Average Sales per Order: ₹${avg.toFixed(2)}</h3>`;
+
+      const maxState = Object.entries(stateSales).sort((a, b) => b[1] - a[1])[0];
+      document.getElementById('highestState').innerHTML = `<h3>Top Performing State: ${maxState[0]}</h3>`;
+
+      Plotly.newPlot('shippingMode', [{
+        labels: Object.keys(shippingModeCount),
+        values: Object.values(shippingModeCount),
+        type: 'pie'
+      }], { title: 'Shipping Mode Distribution' });
+
+      Plotly.newPlot('categoryDistribution', [{
+        labels: Object.keys(categoryCount),
+        values: Object.values(categoryCount),
+        type: 'pie'
+      }], { title: 'Category Distribution' });
+    }
+  </script>
+</body>
+</html>
